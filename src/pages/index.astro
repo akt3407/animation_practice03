@@ -1,0 +1,157 @@
+---
+import Layout from '@layouts/Layout.astro';
+import { Image } from 'astro:assets';
+
+import img01 from '@images/img_01.png';
+import img02 from '@images/img_02.png';
+import img03 from '@images/img_03.png';
+import img04 from '@images/img_04.png';
+import img05 from '@images/img_05.png';
+import img06 from '@images/img_06.png';
+import img07 from '@images/img_07.png';
+import img08 from '@images/img_08.png';
+import img09 from '@images/img_09.png';
+import img10 from '@images/img_10.png';
+
+const images = [img01, img02, img03, img04, img05, img06, img07, img08, img09, img10];
+---
+
+<Layout title="AnimationPractice03" description="アニメーションの練習のためのプロジェクトです。">
+  <p class="font-bold">毎日眠い</p>
+  <div>
+    {
+      images.map((img) => (
+        <Image class="flair fixed w-120 opacity-0" src={img} alt="" width={240} height={240} />
+      ))
+    }
+  </div>
+</Layout>
+
+<script>
+  import gsap from 'gsap';
+
+  /**
+   * 1枚の画像に「登場 → 回転 → 落下」のアニメーションを再生する
+   * @param shape マウス位置に配置済みの .flair 要素
+   *
+   * 引数の `: HTMLElement` は必須。書かないと shape の型が決まらず
+   * TS7006「パラメーター 'shape' の型は暗黙的に 'any' になります」が出る。
+   * Astro の <script> は tsconfig の strict 配下で型チェックされるため、
+   * 暗黙の any が禁止されている(noImplicitAny)。
+   */
+  function playAnimation(shape: HTMLElement) {
+    let tl = gsap.timeline();
+
+    // 出現: 透明・サイズ0の状態から、ゴムのように弾んで現れる
+    tl.from(shape, {
+      opacity: 0,
+      scale: 0,
+      ease: 'elastic.out(1,0.3)',
+    })
+      // 回転: -360度 or +360度をランダムに選んで1回転。'<' = 1つ前のtweenと同時スタート
+      .to(
+        shape,
+        {
+          rotation: 'random([-360, 360])',
+        },
+        '<',
+      )
+      // 落下: 画面下(120vh)まで落として退場。0 = タイムラインの先頭から同時スタート
+      .to(
+        shape,
+        {
+          y: '120vh',
+          ease: 'back.in(.4)',
+          duration: 1,
+        },
+        0,
+      );
+  }
+
+  // 画像を出す間隔(px)。マウスがこの距離動くごとに1枚出る。小さいほど密に出る
+  let gap = 100;
+
+  // 使い回す画像プール。DOM上の .flair を全部配列で取得する
+  //
+  // `<HTMLElement>` の型引数は必須。省くと戻り値が unknown[] になり、
+  // 後段の flair[wrappedIndex] が unknown 型 → gsap.set() や playAnimation() に渡せず
+  // TS2345「型 'unknown' の引数を型 'TweenTarget' のパラメーターに割り当てることはできません」
+  // が3か所で出る。toArray はセレクタ文字列から要素の型を推論できないので、こちらで教える。
+  let flair = gsap.utils.toArray<HTMLElement>('.flair');
+  // 次に使う画像の通し番号(1,2,3...と増え続ける)
+  let index = 0;
+  // 通し番号を 0〜flair.length-1 に折り返す関数。10枚なら 10→0, 11→1 となり画像を循環使用できる
+  let wrapper = gsap.utils.wrap(0, flair.length);
+  // 以降のtweenのdurationの既定値を1秒に
+  gsap.defaults({ duration: 1 });
+
+  // 現在のマウス座標
+  let mousePos = { x: 0, y: 0 };
+  // 最後に画像を出した位置。ここからの移動距離で「次を出すか」を判定する
+  let lastMousePos = mousePos;
+  // let cachedMousePos = mousePos;
+  // ↑ 不要。元デモの名残で「マウスに遅れて追従する座標」を作るための変数だが、
+  //   このコードでは画像を mousePos(実座標)に直接置いているので参照される場所が無い。
+  //   さらに mousePos と同じオブジェクトを指すため、初回 mousemove までは
+  //   cachedMousePos.x への代入が lastMousePos.x まで書き換えてしまう罠付き。
+  //   遅延追従カーソルを足したくなったら復活させる。
+
+  // マウス座標を記録するだけ。ここでは描画しない(毎フレーム処理はtickerに任せる)
+  window.addEventListener('mousemove', (e) => {
+    mousePos = {
+      x: e.x,
+      y: e.y,
+    };
+  });
+
+  // GSAPの毎フレームループに登録(requestAnimationFrame相当)
+  gsap.ticker.add(ImageTrail);
+
+  /** 毎フレーム実行: 前回画像を出した地点からの移動距離を測り、gapを超えたら1枚出す */
+  function ImageTrail() {
+    let travelDistance = Math.hypot(lastMousePos.x - mousePos.x, lastMousePos.y - mousePos.y);
+
+    // cachedMousePos.x = gsap.utils.interpolate(cachedMousePos.x || mousePos.x, mousePos.x, 0.1);
+    // cachedMousePos.y = gsap.utils.interpolate(cachedMousePos.y || mousePos.y, mousePos.y, 0.1);
+    // ↑ 不要。毎フレーム現在座標へ10%ずつ近づける = イージング付き追従座標を作る計算。
+    //   計算しているだけで誰も cachedMousePos を読まないので、CPUを使うだけの空回り。
+
+    if (travelDistance > gap) {
+      animateImage();
+      lastMousePos = mousePos; // 基準点を今の位置に更新
+    }
+  }
+
+  /** プールから画像を1枚取り出し、マウス位置に置いてアニメーションさせる */
+  function animateImage() {
+    // 通し番号を配列の範囲内に折り返す
+    let wrappedIndex = wrapper(index);
+
+    // console.log(index, flair.length);
+    // ↑ 不要。index が増え続けて flair.length で折り返せているかを見るための確認用。
+    //   マウスを動かす間ずっと出力され続けるので、動作確認が済んだら消す。
+
+    let img = flair[wrappedIndex];
+
+    // 循環で再利用するため、まだ落下中のアニメを止めて
+    gsap.killTweensOf(img);
+    // GSAPが付けたインラインスタイルを全部リセット(前回の回転・位置を消す)
+    gsap.set(img, {
+      clearProps: 'all',
+    });
+
+    // マウス位置へ配置。xPercent/yPercent -50 で画像の中心をカーソルに合わせる
+    // ※ left/top が効くのはクラスの `fixed` (position: fixed) があるから
+    gsap.set(img, {
+      opacity: 1,
+      left: mousePos.x,
+      top: mousePos.y,
+      xPercent: -50,
+      yPercent: -50,
+    });
+
+    playAnimation(img);
+
+    index++; // 次は別の画像を使う
+  }
+</script>
