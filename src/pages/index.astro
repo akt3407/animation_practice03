@@ -25,6 +25,34 @@ const images = [img01, img02, img03, img04, img05, img06, img07, img08, img09, i
       ))
     }
   </div>
+  <div class="fixed top-1/2 right-16 z-10 flex -translate-y-1/2 flex-col gap-12 md:right-32">
+    {
+      [
+        ['fall-spin', '落下＋回転'],
+        ['fall', '落下のみ'],
+        ['fade', 'その場で消える'],
+        ['spin-fade', '回転して消える'],
+        ['blackhole', '中心に吸い込まれる'],
+      ].map(([mode, label], i) => (
+        <button
+          type="button"
+          class="mode-btn group relative size-44 rounded-full border border-white text-base transition-colors hover:bg-white/20 aria-pressed:bg-white aria-pressed:text-black md:size-48"
+          data-mode={mode}
+          aria-label={label}
+          aria-pressed={i === 0 ? 'true' : 'false'}
+        >
+          <span aria-hidden="true">{i + 1}</span>
+          {/* ホバー/フォーカス時だけ左側に名前を出す */}
+          <span
+            aria-hidden="true"
+            class="pointer-events-none absolute top-1/2 right-full mr-8 -translate-y-1/2 rounded-[4px] bg-white px-8 py-4 text-xs whitespace-nowrap text-black opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+          >
+            {label}
+          </span>
+        </button>
+      ))
+    }
+  </div>
 </Layout>
 
 <script>
@@ -47,26 +75,46 @@ const images = [img01, img02, img03, img04, img05, img06, img07, img08, img09, i
       opacity: 0,
       scale: 0,
       ease: 'elastic.out(1,0.3)',
-    })
-      // 回転: -360度 or +360度をランダムに選んで1回転。'<' = 1つ前のtweenと同時スタート
-      .to(
+    });
+
+    // 回転: -360度 or +360度をランダムに選んで1回転。0 = タイムラインの先頭から同時スタート
+    if (mode === 'fall-spin' || mode === 'spin-fade') {
+      tl.to(shape, { rotation: 'random([-360, 360])' }, 0);
+    }
+
+    if (mode === 'blackhole') {
+      // ブラックホール: 画面中央へぐるぐる回りながら吸い込まれて消える
+      // 画像は left/top でマウス位置に置いてあるので、x/y は「中央までの差分」を渡す
+      tl.to(
         shape,
         {
-          rotation: 'random([-360, 360])',
+          x: window.innerWidth / 2 - mousePos.x,
+          y: window.innerHeight / 2 - mousePos.y,
+          rotation: 720,
+          scale: 0,
+          ease: 'power3.in',
+          duration: 1.2,
         },
-        '<',
-      )
-      // 落下: 画面下(120vh)まで落として退場。0 = タイムラインの先頭から同時スタート
-      .to(
-        shape,
-        {
-          y: '120vh',
-          ease: 'back.in(.4)',
-          duration: 1,
-        },
-        0,
+        0.3,
       );
+    } else if (mode === 'fall-spin' || mode === 'fall') {
+      // 落下: 画面下(120vh)まで落として退場
+      tl.to(shape, { y: '120vh', ease: 'back.in(.4)' }, 0);
+    } else {
+      // その場で消える: 出現が終わってから縮みながらフェードアウト(位置指定なし = 末尾に追加)
+      tl.to(shape, { opacity: 0, scale: 0.5, ease: 'power2.in', duration: 0.6 });
+    }
   }
+
+  // 現在のアニメーションモード。ボタンの data-mode と対応
+  let mode = 'fall-spin';
+  const buttons = document.querySelectorAll<HTMLButtonElement>('.mode-btn');
+  buttons.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      mode = btn.dataset.mode ?? 'fall-spin';
+      buttons.forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
+    });
+  });
 
   // 画像を出す間隔(px)。マウスがこの距離動くごとに1枚出る。小さいほど密に出る
   let gap = 100;
